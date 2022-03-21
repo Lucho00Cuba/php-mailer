@@ -1,0 +1,64 @@
+on:
+  # Trigger analysis when pushing in master or pull requests, and when creating
+  # a pull request. 
+  push:
+    branches:
+      - main
+
+name: Build Image Docker & Deploy Okteto
+jobs:
+  build:
+    #name: CI/CD
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@master
+      - name: build and push to docker
+        uses: docker/build-push-action@v1
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+          name: 0lucho0/php-form
+          tag_with_ref: true
+          tag_with_sha: true
+          dockerfile: ./Dockerfile
+          tags: "${{ github.sha }}"
+  devflow:
+    runs-on: ubuntu-latest
+    steps:
+    - name: checkout
+      uses: actions/checkout@master
+
+    # APPLY
+    - name: context
+      uses: okteto/context@latest
+      with:
+        token: ${{ secrets.OKTETO_TOKEN }}
+      
+    - name: "Activate personal namespace"
+      uses: okteto/namespace@master
+      with:
+        name: lucho00cuba
+
+    - name: "Create deployment"
+      uses: okteto/apply@master
+      with:
+        manifest: ./deploy/php-form.yaml
+
+    # SET IMAGE
+    
+    - name: deploy to cluster
+      uses: steebchen/kubectl@master
+      env:
+        KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+      with:
+        args: set image --record deployment/php-form php-form=0lucho0/php-form:${{ github.sha }}
+      
+    - name: Verify Deployment
+      uses: steebchen/kubectl@master
+      env:
+        KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+        KUBECTL_VERSION: "1.15"
+      with:
+        args: '"rollout status deployment/nginx-deployment"'
+        
+# https://github.com/okteto/actions
